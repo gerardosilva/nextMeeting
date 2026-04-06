@@ -1,6 +1,7 @@
 export default async function handler(req, res) {
-  if (req.method && req.method !== 'POST') {
-    res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    res.status(405).json({ error: 'method_not_allowed' });
     return;
   }
 
@@ -15,14 +16,14 @@ export default async function handler(req, res) {
 
   const refreshToken = body.refresh_token;
   if (!refreshToken) {
-    res.status(400).json({ error: 'Missing refresh_token' });
+    res.status(400).json({ error: 'missing_refresh_token' });
     return;
   }
 
   const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
   const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
   if (!CLIENT_ID || !CLIENT_SECRET) {
-    res.status(500).json({ error: 'Missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET env vars' });
+    res.status(500).json({ error: 'missing_google_env' });
     return;
   }
 
@@ -38,20 +39,32 @@ export default async function handler(req, res) {
       }).toString()
     });
 
+    const raw = await tokenRes.text();
+    let tokenData = null;
+    try {
+      tokenData = JSON.parse(raw);
+    } catch (_) {
+      tokenData = null;
+    }
+
     if (!tokenRes.ok) {
-      const text = await tokenRes.text();
-      res.status(tokenRes.status).json({ error: text });
+      res.status(tokenRes.status).send(raw);
       return;
     }
 
-    const tokenData = await tokenRes.json();
     const now = Math.floor(Date.now() / 1000);
     res.status(200).json({
       access_token: tokenData.access_token,
       expires_at: now + (tokenData.expires_in || 0),
-      scope: tokenData.scope
+      expires_in: tokenData.expires_in,
+      scope: tokenData.scope,
+      token_type: tokenData.token_type,
+      refresh_token: tokenData.refresh_token || refreshToken
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(502).json({
+      error: 'google_refresh_failed',
+      message: err.message
+    });
   }
 }

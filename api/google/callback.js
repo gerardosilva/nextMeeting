@@ -17,9 +17,13 @@ export default async function handler(req, res) {
   }
 
   let verifier;
+  let existingRefreshToken = null;
+  let existingEmail = null;
   try {
     const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf8'));
     verifier = decoded.verifier;
+    existingRefreshToken = decoded.refreshToken || null;
+    existingEmail = decoded.email || null;
   } catch (err) {
     res.status(400).send('Invalid state');
     return;
@@ -43,9 +47,8 @@ export default async function handler(req, res) {
       const text = await tokenRes.text();
       throw new Error(`Token exchange failed ${tokenRes.status}: ${text}`);
     }
-
     const tokenData = await tokenRes.json();
-    let email = null;
+    let email = existingEmail;
     try {
       const infoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
         headers: { Authorization: `Bearer ${tokenData.access_token}` }
@@ -63,7 +66,7 @@ export default async function handler(req, res) {
       provider: 'Google',
       email,
       access_token: tokenData.access_token,
-      refresh_token: tokenData.refresh_token,
+      refresh_token: tokenData.refresh_token || existingRefreshToken,
       expires_at: now + (tokenData.expires_in || 0),
       scope: tokenData.scope,
       client_id: CLIENT_ID
